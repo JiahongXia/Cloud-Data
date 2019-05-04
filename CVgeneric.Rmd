@@ -1,0 +1,47 @@
+---
+title: "CVgeneric"
+author: "Jiahong Xia & Dajie Sun"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+library(caret)
+library(e1071)
+# 2 (d)
+CVgeneric <- function(data=TrainSet, formula= "label ~ NDAI + SD + CORR",method="glm",family="binomial", cvfold=10, lossfunction="sensitivity", cutoff=0.5){
+  currFormula <- as.formula(formula)
+  folds <- createFolds(data$label, k = cvfold)
+  conf_matrix=list()
+  for (i in 1:cvfold){
+    train_cv=TrainSet[-folds[[i]],]
+    valid_cv=TrainSet[folds[[i]],]
+    if (method == "svm"){
+      trainsubIndex <- sample(seq_len(nrow(train_cv)), size = 10000) # actual training data for svm
+      training_cv_sub <- train_cv[trainsubIndex, ]
+      validsubIndex <- sample(seq_len(nrow(valid_cv)), size = 2000) # actual validation data for svm
+      valid_cv_sub=valid_cv[validsubIndex,]
+      mod_fit <- svm(currFormula, data = training_cv_sub, type = 'C-classification',kernel = 'linear', probability = TRUE)
+      prob <- predict(mod_fit, type="prob", newdata=valid_cv_sub, probability = TRUE)
+      a=attr(prob, "probabilities")
+      if (colnames(a)[1]=="-1"){
+        b=a[,2]
+      }else {
+        b=a[,1]
+      }
+      p=factor((b>=cutoff)*1+(-1)*(b< cutoff))
+      conf_matrix[[i]]=confusionMatrix(p,valid_cv_sub$label,positive = levels(valid_cv_sub$label)[2])
+    }else{
+      mod_fit <- train(currFormula,  data=train_cv, method=method, family=family)
+      pp=predict(mod_fit, newdata=valid_cv, type="prob")
+      p=factor((pp$`1`>=cutoff)*1+(-1)*(pp$`1`< cutoff))
+      conf_matrix[[i]]=confusionMatrix(p,valid_cv$label,positive = levels(valid_cv$label)[2])
+    }
+    
+  }
+  return(conf_matrix)
+}
+```
