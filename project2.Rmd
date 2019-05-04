@@ -1,0 +1,510 @@
+---
+title: "Project2"
+author: "Jiahong Xia & Dajie Sun"
+date: "April 24, 2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = '/Users/kelvinx/Desktop/STAT 154/project2/image_data')
+rm(list=ls())
+#library(forecast)
+library(caret)
+library(corrplot)
+library(Hmisc)
+library(e1071)
+library(dplyr)
+library(randomForest)
+```
+
+
+```{r}
+data1= read.table("image1.txt", header = FALSE, col.names=c("y", "x", "label", "NDAI", "SD", "CORR", "DF", "CF", "BF", "AF","AN"))
+data2=read.table("image2.txt", header = FALSE, col.names=c("y", "x", "label", "NDAI", "SD", "CORR", "DF", "CF", "BF", "AF","AN"))
+data3=read.table("image3.txt", header = FALSE, col.names=c("y", "x", "label", "NDAI", "SD", "CORR", "DF", "CF", "BF", "AF","AN"))
+data1$label=factor(data1$label)# factorize the label for plot.
+data2$label=factor(data2$label)# factorize the label for plot.
+data3$label=factor(data3$label)# factorize the label for plot.
+data=rbind(data1,data2,data3)
+data_labeled=data[data$label!=0,] # removed the unlabeled rows
+data_labeled$label=factor(data_labeled$label)
+data_labeled
+
+```
+
+
+```{r}
+library(ggplot2)
+ggplot(data1, aes(x=x, y=y, color=label)) +  geom_point()+scale_colour_manual(values = c( "blue",  "black","grey"))
+ggplot(data2, aes(x=x, y=y, color=label)) +  geom_point()+scale_colour_manual(values = c( "blue",  "black","grey"))
+
+ggplot(data3, aes(x=x, y=y, color=label)) +  geom_point()+scale_colour_manual(values = c( "blue",  "black","grey"))
+```
+
+
+
+
+
+```{r}
+# 1 (b)
+# percentage of pixels for different class 
+as.matrix(table(data1$label)+table(data2$label)+table(data3$label))/(nrow(data1)+nrow(data2)+nrow(data3))
+#data_labeled$label = as.integer(data_labeled$label)
+#print(cor(data_labeled))
+#pairs(data_labeled)# this line take a long time, so comment it.
+```
+
+```{r}
+# 1 (c)
+d1=data_labeled[data_labeled$label==1,]
+d2=data_labeled[data_labeled$label==-1,]
+library(plyr)
+mu1 <- ddply(data, "label", summarise, grp.mean=mean(NDAI))
+p1<-ggplot(data, aes(x=NDAI, color=label)) +
+  geom_histogram(fill="white", position="dodge")+
+  geom_vline(data=mu1, aes(xintercept=grp.mean, color=label),
+             linetype="dashed")+
+  theme(legend.position="top")
+mu2 <- ddply(data, "label", summarise, grp.mean=mean(CORR))
+p2<- ggplot(data, aes(x=CORR, color=label)) +
+  geom_histogram(fill="white", position="dodge")+
+  geom_vline(data=mu2, aes(xintercept=grp.mean, color=label),
+             linetype="dashed")+
+  theme(legend.position="top")
+
+mu3 <- ddply(data, "label", summarise, grp.mean=mean(SD))
+p3<- ggplot(data, aes(x=SD, color=label)) +
+  geom_histogram(fill="white", position="dodge")+
+  geom_vline(data=mu3, aes(xintercept=grp.mean, color=label),
+             linetype="dashed")+
+  theme(legend.position="top")
+
+p1
+p2
+p3
+```
+
+2.(a)
+
+```{r}
+data_1_labeled=data1[data1$label!=0,]
+data_2_labeled=data2[data2$label!=0,]
+data_3_labeled=data3[data3$label!=0,]
+data_1_labeled$label=factor(data_1_labeled$label)
+data_2_labeled$label=factor(data_2_labeled$label)
+data_3_labeled$label=factor(data_3_labeled$label)
+```
+method 1
+```{r}
+set.seed(154)
+testIndex_1 = sample(seq_len(nrow(data_1_labeled)), size = (nrow(data_1_labeled))*0.6)
+TrainSet_1 = data_1_labeled[testIndex_1, ]
+TestSet_1 = data_1_labeled[-testIndex_1, ]
+
+testIndex_2 = sample(seq_len(nrow(data_2_labeled)), size = (nrow(data_2_labeled))*0.6)
+TrainSet_2 = data_2_labeled[testIndex_2, ]
+TestSet_2 = data_2_labeled[-testIndex_2, ]
+
+testIndex_3 = sample(seq_len(nrow(data_3_labeled)), size = (nrow(data_3_labeled))*0.6)
+TrainSet_3 = data_3_labeled[testIndex_3, ]
+TestSet_3 = data_3_labeled[-testIndex_3, ]
+
+TrainSet=rbind(TrainSet_1,TrainSet_2,TrainSet_3)
+TestSet_old=rbind(TestSet_1,TestSet_2,TestSet_3)
+
+valSize <- floor(nrow(TestSet_old)*0.5)
+valIndex <- sample(seq_len(nrow(TestSet_old)), size = valSize) # actual training data
+TestSet <- TestSet_old[valIndex, ]
+valSet <- TestSet_old[-valIndex, ]
+```
+method 2
+```{r}
+set.seed(254)
+testIndex_1_n1 = sample(seq_len(nrow(data_1_labeled[data_1_labeled$label == -1,])), size = (nrow(data_1_labeled[data_1_labeled$label == -1,]))*0.6)
+TrainSet_1_n1 = (data_1_labeled[data_1_labeled$label == -1,])[testIndex_1_n1, ]
+TestSet_1_n1 = (data_1_labeled[data_1_labeled$label == -1,])[-testIndex_1_n1, ]
+
+testIndex_1_p1 = sample(seq_len(nrow(data_1_labeled[data_1_labeled$label == 1,])), size = (nrow(data_1_labeled[data_1_labeled$label == 1,]))*0.6)
+TrainSet_1_p1 = data_1_labeled[data_1_labeled$label == 1,][testIndex_1_p1, ]
+TestSet_1_p1 = data_1_labeled[data_1_labeled$label == 1,][-testIndex_1_p1, ]
+
+testIndex_2_n1 = sample(seq_len(nrow(data_2_labeled[data_2_labeled$label == -1,])), size = (nrow(data_2_labeled[data_2_labeled$label == -1,]))*0.6)
+TrainSet_2_n1 = data_2_labeled[data_2_labeled$label == -1,][testIndex_2_n1, ]
+TestSet_2_n1 = data_2_labeled[data_2_labeled$label == -1,][-testIndex_2_n1, ]
+
+testIndex_2_p1 = sample(seq_len(nrow(data_2_labeled[data_2_labeled$label == 1,])), size = (nrow(data_2_labeled[data_2_labeled$label == 1,]))*0.6)
+TrainSet_2_p1 = data_2_labeled[data_2_labeled$label == 1,][testIndex_2_p1, ]
+TestSet_2_p1 = data_2_labeled[data_2_labeled$label == 1,][-testIndex_2_p1, ]
+
+testIndex_3_n1 = sample(seq_len(nrow(data_3_labeled[data_3_labeled$label == -1,])), size = (nrow(data_3_labeled[data_3_labeled$label == -1,]))*0.6)
+TrainSet_3_n1 = data_3_labeled[data_3_labeled$label == -1,][testIndex_3_n1, ]
+TestSet_3_n1 = data_3_labeled[data_3_labeled$label == -1,][-testIndex_3_n1, ]
+
+
+testIndex_3_p1 = sample(seq_len(nrow(data_3_labeled[data_3_labeled$label == 1,])), size = (nrow(data_3_labeled[data_3_labeled$label == 1,]))*0.6)
+TrainSet_3_p1 = data_3_labeled[data_3_labeled$label == 1,][testIndex_3_p1, ]
+TestSet_3_p1 = data_3_labeled[data_3_labeled$label == 1,][-testIndex_3_p1, ]
+
+TrainSet=rbind(TrainSet_1_n1,TrainSet_1_p1,TrainSet_2_n1, TrainSet_2_p1, TrainSet_3_n1, TrainSet_3_p1)
+TestSet_old=rbind(TestSet_1_n1,TestSet_1_p1,TestSet_2_n1, TestSet_2_p1, TestSet_3_n1, TestSet_3_p1)
+
+valSize <- floor(nrow(TestSet_old)*0.5)
+valIndex <- sample(seq_len(nrow(TestSet_old)), size = valSize) # actual training data
+TestSet <- TestSet_old[valIndex, ]
+valSet <- TestSet_old[-valIndex, ]
+
+```
+
+(b)
+```{r}
+validationSet_b = valSet
+validationSet_b$label = replace(validationSet_b$label, 1:nrow(validationSet_b), -1)
+
+truth_val <- factor(rep(valSet$label))
+pred_val <- factor(rep(validationSet_b$label))
+
+xtab_val <- table(pred_val, truth_val)
+xtab_val
+accuracy_val = 25357 / (25357 + 16257)
+accuracy_val
+
+TestSet_b = TestSet
+
+TestSet_b$label = replace(TestSet_b$label, 1:nrow(TestSet_b), -1)
+
+truth_test <- factor(rep(TestSet$label))
+pred_test <- factor(rep(TestSet_b$label))
+
+xtab_test <- table(pred_test, truth_test)
+xtab_test
+
+accuracy_test = 25476 / (25476 + 16137)
+accuracy_test
+
+# If there is a large portion of cloud-free area, this classifier have high average accuracy.
+```
+
+
+(c)
+```{r}
+TrainSet_2c = subset(TrainSet, select = c(1,2,4:11))
+cov = cov(apply(TrainSet_2c, 2, scale))
+eigen = eigen(cov)
+cov
+eigen
+
+'sum up'
+sum_up = sum(eigen$values)
+sum_up
+
+
+PVE_1 = eigen$values/sum(eigen$values)
+PVE_1
+
+plot(PVE_1 , xlab=" Principal Component ", ylab=" Proportion of Variance Explained" ,type="b")
+
+"We noticed that the curve is going down. There's 10 PCs, and since the first 3 PC can explain 85% of the variability, it's good enough so we'd better keep 3 PCs. "
+x1 <- TrainSet[,"NDAI"]
+x2 <- TrainSet[,"CORR"]
+x3 <- TrainSet[,"SD"]
+y = TrainSet[,"label"]
+
+scales <- list(x=list(relation="free"), y=list(relation="free"))
+featurePlot(x=x1, y=y, plot="density", scales=scales)
+featurePlot(x=x2, y=y, plot="density", scales=scales)
+featurePlot(x=x3, y=y, plot="density", scales=scales)
+```
+
+```{r}
+library(caret)
+library(e1071)
+# 2 (d)
+CVgeneric <- function(data=TrainSet, formula= "label ~ NDAI + SD + CORR",method="glm",family="binomial", cvfold=10, lossfunction="sensitivity", cutoff=0.5){
+  currFormula <- as.formula(formula)
+  folds <- createFolds(data$label, k = cvfold)
+  conf_matrix=list()
+  for (i in 1:cvfold){
+    train_cv=TrainSet[-folds[[i]],]
+    valid_cv=TrainSet[folds[[i]],]
+    if (method == "svm"){
+      trainsubIndex <- sample(seq_len(nrow(train_cv)), size = 10000) # actual training data for svm
+      training_cv_sub <- train_cv[trainsubIndex, ]
+      validsubIndex <- sample(seq_len(nrow(valid_cv)), size = 2000) # actual validation data for svm
+      valid_cv_sub=valid_cv[validsubIndex,]
+      mod_fit <- svm(currFormula, data = training_cv_sub, type = 'C-classification',kernel = 'linear', probability = TRUE)
+      prob <- predict(mod_fit, type="prob", newdata=valid_cv_sub, probability = TRUE)
+      a=attr(prob, "probabilities")
+      if (colnames(a)[1]=="-1"){
+        b=a[,2]
+      }else {
+        b=a[,1]
+      }
+      p=factor((b>=cutoff)*1+(-1)*(b< cutoff))
+      conf_matrix[[i]]=confusionMatrix(p,valid_cv_sub$label,positive = levels(valid_cv_sub$label)[2])
+    }else{
+      mod_fit <- train(currFormula,  data=train_cv, method=method, family=family)
+      pp=predict(mod_fit, newdata=valid_cv, type="prob")
+      p=factor((pp$`1`>=cutoff)*1+(-1)*(pp$`1`< cutoff))
+      conf_matrix[[i]]=confusionMatrix(p,valid_cv$label,positive = levels(valid_cv$label)[2])
+    }
+    
+  }
+  return(conf_matrix)
+}
+
+#cv_res <- CVgeneric(TrainSet, method = "svm")
+#cv_res[[1]]$table # get the confusion matrix
+#cv_res[[2]]$overall[['Accuracy']] # get the overall accuracy.
+
+# cutoff=0.5
+# subIndex <- sample(seq_len(nrow(training)), size = 10000) # actual training data
+# training_sub <- training[subIndex, ]
+# currFormula <- as.formula("label ~ NDAI + SD + CORR")
+# folds <- createFolds(training_sub$label, k = 10)
+# train_cv=training_sub[-folds[[1]],]
+# valid_cv=training_sub[folds[[1]],]
+# mod_fit <- svm(formula = label ~ NDAI + SD + CORR, data = train_cv, type = 'C-classification',kernel = 'linear', probability = TRUE)
+# prob <- predict(mod_fit, type="prob", newdata=valid_cv, probability = TRUE)
+# a=attr(prob, "probabilities")
+# if (colnames(a)[1]=="-1"){
+#   b=a[,2]
+# }else{
+#   b=a[,1]
+# }
+# p=factor((b>=cutoff)*1+(-1)*(b< cutoff))
+# confusionMatrix(p,valid_cv$label,positive = levels(valid_cv$label)[2])
+
+# # factor((b$`1`>=0.5)*1+(-1)*(b$`1`< 0.5))
+# a=confusionMatrix(p,valid_cv$label,positive = levels(valid_cv$label)[2])
+# 
+# #return(c(sensitivity(p,valid_cv$label), specificity(p,valid_cv$label)))
+
+```
+
+
+```{r}
+# 3(a)
+accuracy_cv=data.frame("fold1"=numeric(),"fold2"=numeric(),"fold3"=numeric(),"fold4"=numeric(),"fold5"=numeric(),"fold6"=numeric(),"fold7"=numeric(),"fold8"=numeric(),"fold9"=numeric(),"fold10"=numeric(),"test"=numeric())
+cutoff=0.5
+for (m in c("glm","lda","qda","svm")){
+  # accuracy for cross validatiaon folds
+  temp=c()
+  cv_res <- CVgeneric(TrainSet, method = m)
+  for (i in 1:10){
+    temp=c(temp, cv_res[[i]]$overall[['Accuracy']])
+  }
+  
+  
+  # accuracy for the test set.
+  if (m!="svm"){
+    mod_fit <- train(label ~ NDAI + SD + CORR,  data=TrainSet, method=m, family="binomial")
+    pp=predict(mod_fit, newdata=TestSet, type="prob")
+    p=factor((pp$`1`>=cutoff)*1+(-1)*(pp$`1`< cutoff))
+    conf_matrix=confusionMatrix(p,TestSet$label,positive = levels(TestSet$label)[2])
+  }else{
+    trainsubIndex <- sample(seq_len(nrow(TrainSet)), size = 10000) # actual training data for svm
+    training_sub <- TrainSet[trainsubIndex, ]
+    testsubIndex <- sample(seq_len(nrow(TestSet)), size = 2000) # actual validation data for svm
+    test_sub=TestSet[testsubIndex,]
+    mod_fit <- svm(label ~ NDAI + SD + CORR, data = training_sub, type = 'C-classification',kernel = 'linear', probability = TRUE)
+    prob <- predict(mod_fit, type="prob", newdata=test_sub, probability = TRUE)
+    a=attr(prob, "probabilities")
+    if (colnames(a)[1]=="-1"){
+      b=a[,2]
+    }else {
+      b=a[,1]
+    }
+    p=factor((b>=cutoff)*1+(-1)*(b< cutoff))
+    conf_matrix=confusionMatrix(p,test_sub$label,positive = levels(test_sub$label)[2])
+  }
+  temp=c(temp,conf_matrix$overall[['Accuracy']])
+  accuracy_cv[m,]= temp
+}
+accuracy_cv
+write.csv(accuracy_cv, file = "split_method_2.csv")
+
+# cv_res <- CVgeneric(training, method = "lda")
+# cv_res[[1]]$table # get the confusion matrix
+# cv_res[[2]]$overall[['Accuracy']] # get the overall accuracy.
+
+#cv_res <- CVgeneric(training, method = "svm")
+#svm(currFormula, data = training, type = 'C-classification',kernel = 'linear', probability = TRUE)
+
+```
+
+
+
+
+
+```{r}
+# 3(b)
+library(MASS)
+library(pROC)
+library(ROCR)
+library(e1071)
+# Compute AUC for predicting Class with the variable CreditHistory.Critical
+#f1 = roc(label ~ NDAI + SD + CORR, data=training) 
+#plot(f1, col="red")
+mod_fit_one=glm(label ~ NDAI + SD + CORR,  data=TrainSet, family="binomial")
+
+# Compute AUC for predicting Class with the model
+prob <- predict(mod_fit_one, newdata=TestSet, type="response")
+#prob <- predict(mod_fit_one, newdata=testing)# for lda
+pred <- prediction(prob, TestSet$label) # for glm
+#pred <- prediction(prob$posterior[,2], testing$label)# for lda
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+plot(perf)
+auc <- performance(pred, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+cutoffs <- data.frame(cut=perf@alpha.values[[1]], fpr=perf@x.values[[1]], 
+                      tpr=perf@y.values[[1]])
+cutoffs <- cutoffs[order(cutoffs$cut, decreasing=TRUE),]
+x=head(subset(cutoffs, cut < 0.5))[1,]$fpr
+y=head(subset(cutoffs, cut < 0.5))[1,]$tpr
+points(x,y, pch=19)
+
+
+mod_fit_two=lda(label ~ NDAI + SD + CORR,  data=TrainSet, family="binomial")
+# Compute AUC for predicting Class with the model
+prob <- predict(mod_fit_two, newdata=TestSet)
+pred <- prediction(prob$posterior[,2], TestSet$label)# for lda
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+plot(perf, add=TRUE, col="red")
+auc <- performance(pred, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+cutoffs <- data.frame(cut=perf@alpha.values[[1]], fpr=perf@x.values[[1]], 
+                      tpr=perf@y.values[[1]])
+cutoffs <- cutoffs[order(cutoffs$cut, decreasing=TRUE),]
+x=head(subset(cutoffs, cut < 0.5))[1,]$fpr
+y=head(subset(cutoffs, cut < 0.5))[1,]$tpr
+points(x,y, pch=19, col="red")
+
+
+mod_fit_three=qda(label ~ NDAI + SD + CORR,  data=TrainSet, family="binomial")
+# Compute AUC for predicting Class with the model
+prob <- predict(mod_fit_three, newdata=TestSet)
+pred <- prediction(prob$posterior[,2], TestSet$label)# for lda
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+plot(perf, add=TRUE, col="green")
+auc <- performance(pred, measure = "auc")
+auc <- auc@y.values[[1]]
+auc
+cutoffs <- data.frame(cut=perf@alpha.values[[1]], fpr=perf@x.values[[1]], 
+                      tpr=perf@y.values[[1]])
+cutoffs <- cutoffs[order(cutoffs$cut, decreasing=TRUE),]
+x=head(subset(cutoffs, cut < 0.5))[1,]$fpr
+y=head(subset(cutoffs, cut < 0.5))[1,]$tpr
+points(x,y, pch=19, col="green")
+
+
+# mod_fit_four <- svm(label ~ NDAI + SD + CORR, data=training, cost=4, gamma=0.0625, probability = TRUE)
+# prob <- predict(mod_fit_four, type="prob", newdata=testing, probability = TRUE)
+# x.svm.prob.rocr <- prediction(attr(prob, "probabilities")[,2], testing$label)
+# x.svm.perf <- performance(x.svm.prob.rocr, "tpr","fpr")
+# plot(x.svm.perf, col=6, add=TRUE)
+# 
+# cutoffs <- data.frame(cut=perf@alpha.values[[1]], fpr=perf@x.values[[1]], 
+#                       tpr=perf@y.values[[1]])
+# cutoffs <- cutoffs[order(cutoffs$cut, decreasing=TRUE),]
+# x=head(subset(cutoffs, cut < 0.5))[1,]$fpr
+# y=head(subset(cutoffs, cut < 0.5))[1,]$tpr
+# points(x,y, pch=19, col="red")
+
+subIndex <- sample(seq_len(nrow(TrainSet)), size = 20000) # actual training data
+training_sub <- TrainSet[subIndex, ]
+
+mod_fit_four = svm(formula = label ~ NDAI + SD + CORR, 
+                 data = training_sub, 
+                 type = 'C-classification', 
+                 kernel = 'linear', probability = TRUE) 
+prob <- predict(mod_fit_four, type="prob", newdata=TestSet, probability = TRUE)
+if (colnames(attr(prob, "probabilities"))[1]=="1"){
+  a=attr(prob, "probabilities")[,1]
+}else{
+  a=attr(prob, "probabilities")[,2]
+}
+pred <- prediction(a, TestSet$label)
+perf <- performance(pred, "tpr","fpr")
+plot(perf, col="blue", add=TRUE)
+
+cutoffs <- data.frame(cut=perf@alpha.values[[1]], fpr=perf@x.values[[1]], 
+                      tpr=perf@y.values[[1]])
+cutoffs <- cutoffs[order(cutoffs$cut, decreasing=TRUE),]
+x=head(subset(cutoffs, cut < 0.5))[1,]$fpr
+y=head(subset(cutoffs, cut < 0.5))[1,]$tpr
+points(x,y, pch=19, col="blue")
+
+legend(0.7, 0.5, legend=c("Logistic", "lda", "qda", "svm"),
+       col=c("black", "red","green","blue"), lty=1:2, cex=0.8)
+
+```
+
+```{r}
+# 4 (a)
+subIndex <- sample(seq_len(nrow(TrainSet)),20000) # actual training data
+training_sub <- TrainSet[subIndex, ]
+
+library(klaR)
+partimat(label ~ NDAI + SD + CORR, data = training_sub, method = "qda", plot.matrix = TRUE, col.correct='green', col.wrong='red')
+
+qda_fit=qda(label ~ NDAI + CORR+ SD,  data=TrainSet, family="binomial")
+pred_1 <- predict(qda_fit, newdata=TestSet)$class
+
+```
+4(b)
+```{r}
+df = TestSet
+df["predict"] = pred_1
+misclassification=  filter(df, label == -1 & predict == 1 | label == 1 & predict == -1)
+
+pairs(misclassification[4:6])
+range(misclassification$NDAI)
+range(misclassification$SD)
+range(misclassification$CORR)
+hist(misclassification$NDAI)
+hist(misclassification$SD)
+hist(misclassification$CORR)
+
+
+```
+4(c)
+```{r}
+model1 <- randomForest(label ~ x + y +NDAI + CORR+ SD + AF + BF + CF + DF + AN,  data=training_sub, importance = TRUE)
+model1
+pred_3 <- predict(model1, newdata=TestSet, type = "class")
+table(pred_3, TestSet$label) 
+
+df_random_forest = TestSet
+df_random_forest["predict_random_forest"] = pred_3
+
+misclassification_random_forest=  filter(df_random_forest, label == -1 & predict_random_forest == 1 | label == 1 & predict_random_forest == -1)
+
+pairs(misclassification_random_forest[4:6])
+
+
+hist(misclassification_random_forest$NDAI)
+hist(misclassification_random_forest$SD)
+hist(misclassification_random_forest$CORR)
+
+```
+
+
+```{r}
+
+## Loading required package: gplots
+## 
+## Attaching package: 'gplots'
+## The following object is masked from 'package:stats':
+## 
+##     lowess
+# plot a ROC curve for a single prediction run
+# and color the curve according to cutoff.
+data(ROCR.simple)
+df <- data.frame(ROCR.simple)
+pred <- prediction(df$predictions, df$labels)
+perf <- performance(pred,"tpr","fpr")
+plot(perf,colorize=TRUE)
+```
