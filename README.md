@@ -1,5 +1,5 @@
 # Cloud-Data
-Stat 154 spring 2019 project 2
+The goal of this project is the exploration and modeling of cloud detection in the polar regions based on radiance recorded automatically by the MISR sensor abroad the NASA satellite Terra. 
 
 Part 1 (Run the proper method)
 
